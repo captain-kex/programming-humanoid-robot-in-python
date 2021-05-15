@@ -35,9 +35,9 @@ class PIDController(object):
         self.e2 = np.zeros(size)
         # ADJUST PARAMETERS BELOW
         delay = 0
-        self.Kp = 0
-        self.Ki = 0
-        self.Kd = 0
+        self.Kp = 20
+        self.Ki = 0.7
+        self.Kd = 0.1
         self.y = deque(np.zeros(size), maxlen=delay + 1)
 
     def set_delay(self, delay):
@@ -53,7 +53,28 @@ class PIDController(object):
         @return control signal
         '''
         # YOUR CODE HERE
-
+        # From slide 7 of the lecture there is a formula
+        # e1 and e2 are never used (outside of init)
+        # i need e(t_k), e(t_k-1) and e(t_k-2)
+        
+        # error e(t_k) (current error)
+        #e = np.abs(target-sensor) # difference of supposed and given values
+        e=target-sensor
+        
+        self.u = self.u + (self.Kp+self.Ki*self.dt+(self.Kd/self.dt))*e - (self.Kp+((2*self.Kd)/self.dt))*self.e1 + (self.Kd/self.dt)*self.e2
+        
+        # let's say e1 is for step k-1 (previous step) and e2 is step k-2
+        self.e2 = self.e1 # we are in step k -> step k-1 becomes step k-2
+        self.e1 = e # after e2 because otherwise we loose the old e1 and can't store it in e2
+        
+        
+        # use self.y to buffer model prediction
+        # the motor in simulation can simple modelled by angle(t) = angle(t-1) + speed * dt
+        # -> calculate speed: (u-current_values + y-current_values) / 2*dt, y is the leftmost element in self.y (y is a dequeue, double-ended queue)
+        speed = ((self.u - sensor) + (self.y.popleft() - sensor)) / 2*self.dt # popleft removes and returns the leftmost element
+        self.y.append(self.u+speed*self.dt) # angle(t) = angle(t-1) + speed * dt; append adds element to the right end of the dequeue
+        
+        
         return self.u
 
 
