@@ -22,83 +22,11 @@
 
 from pid import PIDAgent
 from keyframes import hello
+from keyframes import leftBackToStand
+from keyframes import leftBellyToStand
+from keyframes import rightBackToStand
 import numpy as np # ADDED because it makes things way easier
-import time # ADDED
 
-
-def natural_cubic_interpolation(x, y, time):
-    """
-    Intepolate the given function using a spline with natural boundary conditions.
-
-    Arguments:
-    x: x-values of interpolation points
-    y: y-values of interpolation points
-
-    Return:
-    spline: list of np.poly1d objects, each interpolating the function between two adjacent points
-    """
-    n = len(x) # len(y) should be the same
-    
-    if time == 0.0:
-        return 0.0
-    
-    # if time is past the last keyframe:
-    if time > x[n-1]:
-        return y[n-1][0] # return last y-value for last x-value
-    
-    # TODO construct linear system with natural boundary conditions
-
-    
-    # coefficents
-    a = np.array([])
-    b = np.array([])
-    c = np.array([])
-    d = np.array([])
-    
-    tmp1 = np.array([])
-    tmp2 = np.array([])
-    tmp3 = np.array([])
-    tmp4 = np.array([])
-    
-    for i in range(n):
-        a = np.append(a, y[i][0])
-        c = np.append(c, 0)
-        tmp3 = np.append(tmp3, 0)
-        tmp4 = np.append(tmp4, 0)
-        
-    for i in range(n-1):
-        b = np.append(b, 0)
-        d = np.append(d, 0)
-        tmp1 = np.append(tmp1, 0)
-        tmp2 = np.append(tmp2, x[i+1]-x[i])
-        
-    arr = [0]
-    
-    for i in range(1, n-1): # we want to keep arr[0]=0
-        arr.append((3/tmp2[i])*(a[i+1]-a[i]) - (3/tmp2[i-1])*(a[i]-a[i-1]))
-    
-    tmp3[0] = 1
-    
-    for i in range(1, n-1): # again
-        tmp3[i] = 2*(x[i+1]-x[i-1])-tmp2[i-1]*tmp1[i-1]
-        tmp1[i] = tmp2[i] / tmp3[i]
-        tmp4[i] = (a[i]-tmp2[i-1]*tmp4[i-1])/tmp3[i]
-    
-    tmp3[n-1] = 1
-    
-    for i in range(n-2, -1, -1):
-        c[i] = tmp4[i] - tmp1[i]*c[i+1]
-        b[i] = ((a[i+1]-a[i])/tmp2[i]) - ((tmp2[i]*(c[i+1]+2*c[i]))/3)
-        d[i] = (c[i+1] - c[i]) / (3 * tmp2[i])
-        
-    for i in range(n-1):
-        if time < x[i+1]:
-            tmp = x[i]
-            return a[i] + b[i]*(time-tmp) + c[i]*((time-tmp)**2) + d[i]*((time-tmp)**3)
-        
-    return y[len(y)-1][0]
-        
-start_time = -1
 
 class AngleInterpolationAgent(PIDAgent):
     def __init__(self, simspark_ip='localhost',
@@ -108,6 +36,7 @@ class AngleInterpolationAgent(PIDAgent):
                  sync_mode=True):
         super(AngleInterpolationAgent, self).__init__(simspark_ip, simspark_port, teamname, player_id, sync_mode)
         self.keyframes = ([], [], [])
+        self.start_time = None # ADDED
 
     def think(self, perception):
         target_joints = self.angle_interpolation(self.keyframes, perception)
@@ -125,18 +54,26 @@ class AngleInterpolationAgent(PIDAgent):
         # for bezier curves: given: n+1 points -> n is 13 (n+1 is 14)
         # use cubic spline with natural boundary conditions
          
-        
+        if self.start_time == None:
+            self.start_time = self.perception.time
         # len(keys[x]) is 6
-        global start_time
-        if start_time == -1:
-            start_time = perception.time
             
-        time = perception.time - start_time
+        time = self.perception.time - self.start_time
+        
+        #if time < 0.5:
+        #    return target_joints
 
         for i in range(len(names)): # for every joint do:
+            x_values = times[i]
+            y_values = []
             # times[i] are the x-values for i-th joint
             # keys[i] are the y-values
-            cubic_spline = natural_cubic_interpolation(times[i], keys[i], time)
+            #cubic_spline = natural_cubic_interpolation(times[i], keys[i], time)
+            # for spline: y-values: for joint i: keys[i][j][0], j in [0,5]
+            for j in range(len(keys[i])):
+                y_values.append(keys[i][j][0])
+            
+            cubic_spline = np.interp(time, x_values, y_values)
             target_joints[names[i]] = cubic_spline
         
         return target_joints
@@ -144,4 +81,5 @@ class AngleInterpolationAgent(PIDAgent):
 if __name__ == '__main__':
     agent = AngleInterpolationAgent()
     agent.keyframes = hello()  # CHANGE DIFFERENT KEYFRAMES
+    #agent.keyframes = rightBackToStand()
     agent.run()
