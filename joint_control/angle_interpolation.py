@@ -51,8 +51,7 @@ class AngleInterpolationAgent(PIDAgent):
         names, times, keys = keyframes
         # len(names)=len(times)=len(keys) is 14 = number of keyframes
         # times are the x-values, keys are the y-values
-        # for bezier curves: given: n+1 points -> n is 13 (n+1 is 14)
-        # use cubic spline with natural boundary conditions
+        # use cubic spline
          
         if self.start_time == None:
             self.start_time = self.perception.time
@@ -64,11 +63,9 @@ class AngleInterpolationAgent(PIDAgent):
         #    return target_joints
 
         for i in range(len(names)): # for every joint do:
+            # times[i] are the x-values for i-th joint
             x_values = times[i]
             y_values = []
-            # times[i] are the x-values for i-th joint
-            # keys[i] are the y-values
-            #cubic_spline = natural_cubic_interpolation(times[i], keys[i], time)
             # for spline: y-values: for joint i: keys[i][j][0], j in [0,5]
             for j in range(len(keys[i])):
                 y_values.append(keys[i][j][0])
