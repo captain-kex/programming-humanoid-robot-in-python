@@ -24,6 +24,7 @@ from numpy.matlib import matrix, identity
 
 from angle_interpolation import AngleInterpolationAgent
 
+import numpy as np # ADDED
 
 class ForwardKinematicsAgent(AngleInterpolationAgent):
     def __init__(self, simspark_ip='localhost',
@@ -35,8 +36,12 @@ class ForwardKinematicsAgent(AngleInterpolationAgent):
         self.transforms = {n: identity(4) for n in self.joint_names}
 
         # chains defines the name of chain and joints of the chain
-        self.chains = {'Head': ['HeadYaw', 'HeadPitch']
+        self.chains = {'Head': ['HeadYaw', 'HeadPitch'],
                        # YOUR CODE HERE
+                       'LArm': ['LShoulderPitch', 'LShoulderRoll', 'LElbowYaw', 'LElbowRoll', 'LWristYaw', 'LHand'],
+                       'LLeg': ['LHipYawPitch', 'LHipRoll', 'LHipPitch', 'LKneePitch', 'LAnklePitch', 'LAnkleRoll'],
+                       'RLeg': ['RHipYawPitch', 'RHipRoll', 'RHipPitch', 'RKneePitch', 'RAnklePitch', 'RAnkleRoll'],
+                       'RArm': ['RShoulderPitch', 'RShoulderRoll', 'RElbowYaw', 'RElbowRoll', 'RWristYaw', 'RHand']
                        }
 
     def think(self, perception):
@@ -53,6 +58,47 @@ class ForwardKinematicsAgent(AngleInterpolationAgent):
         '''
         T = identity(4)
         # YOUR CODE HERE
+        s = np.sin(joint_angle)
+        c = np.cos(joint_angle)
+        
+        #[[YXZ, Z, Y, 0],
+        # [Z, XYZ, X, 0],
+        # [Y, X, XYZ, 0],
+        # [X, Y, Z, 1]]
+        # upper-left 3x3: Rotaion-matrix (so R_x, R_y or R_z
+        # upper right 3x1: Position-vector
+        # lower left 1x3: Perspective-transformation
+        # lower right 1x1: scale-factor
+        
+        # from the documentation we know: x is for Roll, y is for Pitch, z is for Yaw
+        # we know R_x, R_y and R_z from Lecture Page 35 of 42 and from "rotation matrix" of wikipedia: 
+        if 'Roll' in joint_name: # x <-> Roll
+            #R_x = [[1, 0, 0],
+            #       [0, c, -s],
+            #       [0, s, c]]
+            T = matrix([[1, 0, 0, 0],
+                        [0, c, -s, 0],
+                        [0, s, c, 0],
+                        [0,0,0,1]])
+        elif 'Pitch' in joint_name: # y <-> Pitch
+            #R_y = [[c, 0, s],
+            #       [0, 1, 0],
+            #       [-s, 0, c]]
+            T = matrix([[c, 0, s, 0],
+                        [0,1,0,0],
+                        [-s, 0, c, 0],
+                        [0,0,0,1]])
+        elif 'Yaw' in joint_name: # z <-> Pitch
+            #R_z = [[c, -s, 0],
+            #       [s, c, 0],
+            #       [0, 0, 1]]
+            T = matrix([[c, -s, 0, 0],
+                        [s, c, 0, 0],
+                        [0, 0, 1, 0],
+                        [0, 0, 0, 1]])
+            # MAYBE: from the analytical solution for NAOs legs we know that the axis of the hip yaq joints are rotated by 45 degrees
+            #if joint_name == 'LHipYawPitch' or joint_name == 'RHipYawPitch':
+            #    T_tmp = matrix([[c,0,-s,0], [0,1,0,0], [s,0,c,0], [0,0,0,1]])
 
         return T
 
@@ -67,6 +113,7 @@ class ForwardKinematicsAgent(AngleInterpolationAgent):
                 angle = joints[joint]
                 Tl = self.local_trans(joint, angle)
                 # YOUR CODE HERE
+                T = T * T1 # multiply old T with current T; * works because Tl of type np.matrix
 
                 self.transforms[joint] = T
 
