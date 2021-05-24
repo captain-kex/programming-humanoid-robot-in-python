@@ -110,67 +110,112 @@ class InverseKinematicsAgent(ForwardKinematicsAgent):
         
         # Let's try Jacobian:
         lambda_ = 1 # TODO
+        max_step = 0.1
         
         # we have the effector_name and get all of it's joints with self.chains[effector_name]:
         all_joints = self.chains[effector_name] # RLeg would give: ['RHipYawPitch', 'RHipRoll', 'RHipPitch', 'RKneePitch', 'RAnklePitch', 'RAnkleRoll']
         
+        # temporarily removed for testing:
         # we want to call forward_kinematics and for that we need a dictionary: joint_angles -> fill joint_angles
         # every key in joint_angles is one element in all_joints
         # we get every corresponding value via self.percection.joint[key]
-        for joint in all_joints:
-            joint_angles[joint] = self.perception.joint[joint]
+        #for joint in all_joints:
+        #    joint_angles[joint] = self.perception.joint[joint]
             
         # for target:
-        # x, y, z from the upper right 3x1: Position-vector
-        x = transform.T[0, -1]
-        y = transform.T[1, -1]
-        z = transform.T[2, -1]
+        ## x, y, z from the upper right 3x1: Position-vector
+        #x = transform.T[0, -1]
+        #y = transform.T[1, -1]
+        #z = transform.T[2, -1]
         
-        theta_x = np.arctan2(transform.T[2, 1], transform[2, 2])
-        theta_y = np.arctan2(-transform.T[2, 0], np.sqrt(transform.T[2, 1]**2 + transform[2, 2]**2))
-        theta_z = np.arctan2(transform.T[1,0], transform[0,0])
+        #theta_x = np.arctan2(transform.T[2, 1], transform[2, 2])
+        #theta_y = np.arctan2(-transform.T[2, 0], np.sqrt(transform.T[2, 1]**2 + transform[2, 2]**2))
+        #theta_z = np.arctan2(transform.T[1,0], transform[0,0])        
+        #target = np.array([x, y, z, theta_x, theta_y, theta_z])
+        x = transform[3,0]
+        y = transform[3,1]
+        z = transform[3,2]
         
+        theta = 0
+        if transform[0,0] == 1: # rotation around x-axis
+            theta = np.arctan2(transform[2,1], transform[1,1])
+        elif transform[1,1] == 1: # rotation around y-axis
+            theta = np.arctan2(transform[0,2], transform[0,0])
+        elif transform[2,2] == 1: # rotation around z-axis
+            theta = np.arctan2(transform[0,1], transform[0,0])
         
-        target = np.array([x, y, z, theta_x, theta_y, theta_z])
+        target = np.matrix([x, y, z, theta])
+        
+        theta = np.random.random(len(all_joints)) * 1e5
         
         for i in range(1000):
-            self.forward_kinematics(joint_angles) # saved in self.transforms
-            Ts = np.zeros(len(self.chains[effector_name]))
-            for number, name in enumerate(self.chains[effector_name]):
-                Ts[number] = self.transform[name]
+            self.forward_kinematics(self.perception.joint) # saved in self.transforms
+            
+            #Ts = np.zeros(len(all_joints), dtype=int) # problem: setting an array element with a sequence
+            Ts = [0] * len(all_joints)  #transformation matrices
+            for number, name in enumerate(all_joints):
+                Ts[number] = self.transforms[name]
                 
+            
             # for Te:
-            x_e = Ts[-1][0, -1]
-            y_e = Ts[-1][1, -1]
-            z_e = Ts[-1][2, -1]
-            theta_x_e = np.arctan2(Ts[-1][2,1], Ts[-1][2,2])
-            theta_y_e = np.arctan2(-Ts[-1][2,0], np.sqrt(Ts[-1][2, 1]**2 + Ts[-1][2, 2]**2))
-            theta_z_e = np.arctan2(Ts[-1][1,0], Ts[-1][0,0])
-            Te = np.array([x_e, y_e, z_e, theta_x_e, theta_y_e, theta_z_e])
+            x_e = Ts[-1][3,0]
+            y_e = Ts[-1][3,1]
+            z_e = Ts[-1][3,2]
+            
+            theta_e = 0
+            if Ts[-1][0,0] == 1: # rotation around x-axis
+                theta_e = np.arctan2(Ts[-1][2,1], Ts[-1][1,1])
+            elif Ts[-1][1,1] == 1: # rotation around y-axis
+                theta_e = np.arctan2(Ts[-1][0,2], Ts[-1][0,0])
+            elif Ts[-1][2,2] == 1: # rotation around z-axis
+                theta_e = np.arctan2(Ts[-1][0,1], Ts[-1][0,0])
+            
+            
+            #theta_x_e = np.arctan2(Ts[-1][2,1], Ts[-1][2,2])
+            #theta_y_e = np.arctan2(-Ts[-1][2,0], np.sqrt(Ts[-1][2, 1]**2 + Ts[-1][2, 2]**2))
+            #theta_z_e = np.arctan2(Ts[-1][1,0], Ts[-1][0,0])
+            #Te = np.array([x_e, y_e, z_e, theta_x_e, theta_y_e, theta_z_e])
+            Te = np.matrix([x_e, y_e, z_e, theta_e]).T
             
             e = target - Te
             
-            def get_x_y_z_thetas(m):
-                x = m[0,-1]
-                y = m[1,-1]
-                z = m[2,-1]
-                
-                theta_x = np.arctan2(m[2,1], m[2,2])
-                theta_y = np.arctan2(-m[2,0], np.sqrt(m[2, 1]**2 + m[2, 2]**2))
-                theta_z = np.arctan2(m[1,0], m[0,0])
-                
-                return np.array([x, y, z, theta_x, theta_y, theta_z])
-                
-            T = np.array([get_x_y_z_thetas(j) for j in Ts[:]])
+            e[e > max_step] = max_step
+            e[e < -max_step] = -max_step
+            
+            
+            T = np.matrix([self.get_x_y_z_theta(j) for j in Ts[:]]).T
             
             J = Te - T
-            J[:,-1] = 1
+            dT = Te - T # don't know if J_copy = J is a hard copy
             
-            d_theta = np.dot(np.dot(J, np.linalg.pinv(np.dot(J.T, J))), e.T) * lambda_
+            J[0, :] = -dT[1,:] # x
+            J[1, :] = dT[0,:] # y
+            J[-1, :] = 1 # angular
+            #J[:,-1] = 1
             
-            for number, name in enumerate(self.chains[effector_name]):
-                joint_angles[name] += np.asarray(d_theta)[number]
+            #d_theta = np.dot(np.dot(J, np.linalg.pinv(np.dot(J.T, J))), e.T) * lambda_
+            d_theta = lambda_ *np.linalg.pinv(J) * e
+            theta += np.asarray(d_theta.T)[0]
             
+            
+            
+            #for number, name in enumerate(all_joints):
+            #    joint_angles[name] += np.asarray(d_theta)[number]
+            
+            # now we only need to write everything into joint_angles:
+            # len(theta) == len(all_joints)
+            #for number, joint_name in enumerate(all_joints):
+                #joint_angles[joint_name]  = theta[number]
+                #if number == len(theta):
+                #    break
+            #i = 0
+            #for joint_name in all_joints:
+            #    joint_angles[joint_name]  = theta[i]
+            #    i += 1
+            #    if i == len(theta):
+            #        break
+            for j in range(len(all_joints)):
+                joint_angles.append(theta[j])
             if np.linalg.norm(d_theta) < 1e-4:
                 break
                 
@@ -178,8 +223,35 @@ class InverseKinematicsAgent(ForwardKinematicsAgent):
         # now we just need to write all angles into joint_angles
         # we can look at the chains for L/RLeg: ['LHipYawPitch', 'LHipRoll', 'LHipPitch', 'LKneePitch', 'LAnklePitch', 'LAnkleRoll'],
         #joint_angles = [HipYawPitch, HipRoll, HipPitch, KneePitch, AnklePitch, AnkleRoll]
+        #joint_angles = theta
         return joint_angles
     
+    def get_x_y_z_thetas(self, m):
+        x = m[0,-1]
+        y = m[1,-1]
+        z = m[2,-1]
+        
+        theta_x = np.arctan2(m[2,1], m[2,2])
+        theta_y = np.arctan2(-m[2,0], np.sqrt(m[2, 1]**2 + m[2, 2]**2))
+        theta_z = np.arctan2(m[1,0], m[0,0])
+                
+        return np.array([x, y, z, theta_x, theta_y, theta_z])
+    
+    def get_x_y_z_theta(self, m):
+        # Similar to from_trans in the jacobian ipnb
+        x = m[3, 0]
+        y = m[3, 1]
+        z = m[3, 2]
+        
+        theta = 0
+        if m[0, 0] == 1: # rotation around x-axis
+            theta = np.arctan2(m[2, 1], m[1, 1])
+        elif m[1, 1] == 1: # rotation around y-axis
+            theta = np.arctan2(m[0, 2], m[0, 0])
+        elif m[2, 2] == 1: # rotation around z-axis
+            theta = np.arctan2([0, 1], m[0, 0])
+            
+        return x, y, z, theta
 
     def set_transforms(self, effector_name, transform):
         '''solve the inverse kinematics and control joints use the results
@@ -213,10 +285,20 @@ class InverseKinematicsAgent(ForwardKinematicsAgent):
         #self.set_time(0)
         #self.target_joints.update(joint_angles)
         
-        for i, joint_name in enumerate(self.chains[effector_name]):
-            names.append(joint_name)
-            times.append([1.0, 3.0])
-            keys.append([[angles[joint] - 0.01, [3, 0, 0], [3, 0, 0]], [angles[joint], [3, 0, 0], [3, 0, 0]]])
+        names = self.chains[effector_name]
+        #for name in names:
+        #    keys.append([[self.perception.joint[name], [3, 0., 0.]], [joint_angles[name], [3, 0., 0.]]])
+        for i in range(len(names)):
+            name = names[i]
+            keys.append([[self.perception.joint[name], [3, 0., 0.]], [joint_angles[i], [3, 0., 0.]]])
+        #for name in names:
+        #    keys.append([[self.perception.joint[name], [3, 0, 0]], [joint_angles[name], [3, 0, 0]]])
+            
+        #for i, joint_name in enumerate(self.chains[effector_name]):
+        #    names.append(joint_name)
+            #times.append([1.0, 3.0])
+            #keys.append([[angles[joint] - 0.01, [3, 0, 0], [3, 0, 0]], [angles[joint], [3, 0, 0], [3, 0, 0]]])
+        times = [[0., 3.]] * len(names)
         self.keyframes = ([], [], [])  # the result joint angles have to fill in
         self.keyframes = (names, times, keys)
 
